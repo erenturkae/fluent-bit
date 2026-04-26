@@ -102,6 +102,8 @@ docker run -d \
   -v "$SCRIPT_DIR/parsers.conf":/fluent-bit/etc/parsers.conf:ro \
   fluent/fluent-bit:${FB_VERSION}
 
+# TODO: Python verify_logs using docker
+
 # final 
 echo ""
 echo "============================================="
