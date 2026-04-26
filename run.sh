@@ -38,6 +38,7 @@ wait_for() {
 }
 
 cleanup_containers() {
+  docker update --restart=no elasticsearch kibana fluent-bit log-generator 2>/dev/null || true
   docker rm -f elasticsearch kibana fluent-bit log-generator 2>/dev/null || true
 }
 
@@ -106,6 +107,31 @@ start() {
       done
     '
 
+  # ---------------- LOG GENERATOR (DOCKER)----------------
+  log "Starting docker log generator"
+  docker run -d \
+    --name log-generator-stdout \
+    --network "$NETWORK" \
+    --restart unless-stopped \
+    busybox \
+    sh -c '
+      i=0
+      while true; do
+        LEVEL=$((RANDOM % 3))
+
+        if [ $LEVEL -eq 0 ]; then
+          echo "{\"service\":\"app\",\"level\":\"INFO\",\"message\":\"stdout OK $i\",\"latency_ms\":$((RANDOM % 300))}"
+        elif [ $LEVEL -eq 1 ]; then
+          echo "{\"service\":\"db\",\"level\":\"WARN\",\"message\":\"slow stdout query\",\"latency_ms\":$((RANDOM % 2000))}"
+        else
+          echo "{\"service\":\"api\",\"level\":\"ERROR\",\"message\":\"stdout failure\",\"latency_ms\":$((RANDOM % 5000))}"
+        fi
+
+        i=$((i+1))
+        sleep 1
+      done
+    '
+
   # ---------------- FLUENT BIT ----------------
   log "Starting Fluent Bit"
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -115,6 +141,7 @@ start() {
     --network "$NETWORK" \
     --user root \
     -v /var/run/docker.sock:/var/run/docker.sock:ro \
+    -v /var/lib/docker/containers:/var/lib/docker/containers:ro \
     -v "$VOLUME":/logs:ro \
     -v "$SCRIPT_DIR/fluent-bit.conf":/fluent-bit/etc/fluent-bit.conf:ro \
     -v "$SCRIPT_DIR/parsers.conf":/fluent-bit/etc/parsers.conf:ro \

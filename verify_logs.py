@@ -33,7 +33,7 @@ def count_docs(index):
 def sample_docs(index, n=2):
     query = json.dumps({
         "size": n,
-        "sort": [{"@timestamp": {"order": "desc"}}]
+        "sort": [{"_doc": {"order": "desc"}}]
     }).encode()
     req = urllib.request.Request(
         f"{ES_URL}/{index}/_search",
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     r1 = check_index("fluent-bit-app",    "INPUT 1 — File Tail (/logs/app.log)")
-    r2 = check_index("fluent-bit-docker", "INPUT 2 — Docker Socket (all containers)")
+    r2 = check_index("fluent-bit-docker", "INPUT 2 — Docker log files")
 
     print(f"\n{'='*55}")
     if r1 and r2:
@@ -88,7 +88,7 @@ if __name__ == "__main__":
         print("    fluent-bit-app    (structured app logs)")
         print("    fluent-bit-docker (all container logs)")
     elif r1:
-        print("  [PARTIAL] File tail OK, Docker socket not yet.")
+        print("  [PARTIAL] File tail OK, Docker logs not yet.")
         print("  Check: docker logs fluent-bit")
     else:
         print("  [FAIL] Check: docker logs fluent-bit")
