@@ -4,69 +4,92 @@ import urllib.error
 import sys
 import time
 
-ES_URL = "http://localhost:9200"
-INDEX   = "fluent-bit-logs"
+ES_URL  = "http://localhost:9200"
+INDICES = ["fluent-bit-app", "fluent-bit-docker"]
 
 
 def check_es():
     try:
         with urllib.request.urlopen(f"{ES_URL}/_cluster/health", timeout=5) as r:
             health = json.loads(r.read())
-            print(f"Elasticsearch status: {health['status']}")
+            print(f"[OK] Elasticsearch status: {health['status']}")
             return True
     except Exception as e:
-        print(f"Cannot reach Elasticsearch: {e}")
+        print(f"[FAIL] Cannot reach Elasticsearch: {e}")
         return False
 
 
-def count_docs():
+def count_docs(index):
     try:
-        with urllib.request.urlopen(f"{ES_URL}/{INDEX}/_count", timeout=5) as r:
+        with urllib.request.urlopen(f"{ES_URL}/{index}/_count", timeout=5) as r:
             data = json.loads(r.read())
-            count = data.get("count", 0)
-            print(f"Documents in '{INDEX}': {count}")
-            return count
+            return data.get("count", 0)
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            print(f"Index '{INDEX}' not created")
-        else:
-            print(f"HTTP {e.code}: {e.reason}")
-        return 0
+            return 0
+        raise
 
 
-def sample_doc():
+def sample_docs(index, n=2):
     query = json.dumps({
-        "size": 3,
+        "size": n,
         "sort": [{"@timestamp": {"order": "desc"}}]
     }).encode()
     req = urllib.request.Request(
-        f"{ES_URL}/{INDEX}/_search",
+        f"{ES_URL}/{index}/_search",
         data=query,
         headers={"Content-Type": "application/json"},
     )
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             data = json.loads(r.read())
-            hits = data["hits"]["hits"]
-            print(f"\n--- Latest {len(hits)} log(s) ---")
-            for h in hits:
-                src = h["_source"]
-                print(json.dumps(src, indent=2))
-    except Exception as e:
-        print(f"Could not fetch sample: {e}")
+            return [h["_source"] for h in data["hits"]["hits"]]
+    except Exception:
+        return []
+
+
+def check_index(index, label):
+    print(f"\n{'─'*55}")
+    print(f"  {label}")
+    print(f"  Index: {index}")
+    print(f"{'─'*55}")
+
+    for attempt in range(1, 6):
+        count = count_docs(index)
+        if count > 0:
+            print(f"  [OK] {count} document(s) indexed.")
+            docs = sample_docs(index)
+            if docs:
+                print(f"  Latest sample:")
+                print("  " + json.dumps(docs[0], indent=4).replace("\n", "\n  "))
+            return True
+        print(f"  Attempt {attempt}/5 — waiting 5s...")
+        time.sleep(5)
+
+    print(f"  [FAIL] No documents found. Check: docker logs fluent-bit")
+    return False
 
 
 if __name__ == "__main__":
-    print("======\n")
+    print("=" * 55)
+    print("  Fluent Bit Dual-Input Verification")
+    print("=" * 55)
 
     if not check_es():
         sys.exit(1)
 
-    # Retry up to 5 times with 5s gap to give Fluent Bit time to ship logs
-    for attempt in range(1, 6):
-        count = count_docs()
-        if count > 0:
-            sample_doc()
-            print(f"\nPipeline is successful.\n{count} logs.")
-            sys.exit(0)
-        time.sleep(5)
+    r1 = check_index("fluent-bit-app",    "INPUT 1 — File Tail (/logs/app.log)")
+    r2 = check_index("fluent-bit-docker", "INPUT 2 — Docker Socket (all containers)")
+
+    print(f"\n{'='*55}")
+    if r1 and r2:
+        print("  [SUCCESS] Both inputs are working!")
+        print("  Open Kibana → Discover → create data views for:")
+        print("    fluent-bit-app    (structured app logs)")
+        print("    fluent-bit-docker (all container logs)")
+    elif r1:
+        print("  [PARTIAL] File tail OK, Docker socket not yet.")
+        print("  Check: docker logs fluent-bit")
+    else:
+        print("  [FAIL] Check: docker logs fluent-bit")
+    print("=" * 55)
