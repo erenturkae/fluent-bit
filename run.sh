@@ -38,8 +38,8 @@ wait_for() {
 }
 
 cleanup_containers() {
-  docker update --restart=no elasticsearch kibana fluent-bit log-generator 2>/dev/null || true
-  docker rm -f elasticsearch kibana fluent-bit log-generator 2>/dev/null || true
+  docker update --restart=no elasticsearch kibana fluent-bit log-generator log-generator-stdout 2>/dev/null || true
+  docker rm -f elasticsearch kibana fluent-bit log-generator log-generator-stdout 2>/dev/null || true
 }
 
 ensure_infra() {
@@ -156,7 +156,7 @@ start() {
 # -----------------------------
 stop() {
   log "Stopping pipeline..."
-  docker stop elasticsearch kibana fluent-bit log-generator 2>/dev/null || true
+  docker stop elasticsearch kibana fluent-bit log-generator log-generator-stdout 2>/dev/null || true
 }
 
 # -----------------------------
