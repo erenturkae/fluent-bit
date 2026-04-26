@@ -68,7 +68,7 @@ start() {
     --restart unless-stopped \
     docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
 
-  wait_for "http://localhost:9200/_cluster/health" "Elasticsearch" 90
+  wait_for "http://localhost:9200/_cluster/health" "Elasticsearch" 40
 
   # ---------------- KIBANA ----------------
   log "Starting Kibana"
@@ -80,7 +80,27 @@ start() {
     --restart unless-stopped \
     docker.elastic.co/kibana/kibana:${KIBANA_VERSION}
 
-  wait_for "http://localhost:5601/api/status" "Kibana" 120
+  wait_for "http://localhost:5601/api/status" "Kibana" 60
+
+    # ---------------- FLUENT BIT ----------------
+  log "Starting Fluent Bit"
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  docker run -d \
+    --name fluent-bit \
+    --network "$NETWORK" \
+    --user root \
+    --privileged \
+    -p 24224:24224 \
+    -v /var/run/docker.sock:/var/run/docker.sock:ro \
+    -v "$VOLUME":/logs:ro \
+    -v /var/lib/docker/containers:/var/lib/docker/containers:ro \
+    -v "$SCRIPT_DIR/fluent-bit.conf":/fluent-bit/etc/fluent-bit.conf:ro \
+    -v "$SCRIPT_DIR/parsers.conf":/fluent-bit/etc/parsers.conf:ro \
+    --restart unless-stopped \
+    fluent/fluent-bit:${FB_VERSION}
+
+  log "Pipeline started successfully"
 
   # ---------------- LOG GENERATOR ----------------
   log "Starting log generator"
@@ -111,6 +131,8 @@ start() {
   log "Starting docker log generator"
   docker run -d \
     --name log-generator-stdout \
+    --log-driver=fluentd \
+    --log-opt fluentd-address=localhost:24224 \
     --network "$NETWORK" \
     --restart unless-stopped \
     busybox \
@@ -131,24 +153,6 @@ start() {
         sleep 1
       done
     '
-
-  # ---------------- FLUENT BIT ----------------
-  log "Starting Fluent Bit"
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-  docker run -d \
-    --name fluent-bit \
-    --network "$NETWORK" \
-    --user root \
-    -v /var/run/docker.sock:/var/run/docker.sock:ro \
-    -v /var/lib/docker/containers:/var/lib/docker/containers:ro \
-    -v "$VOLUME":/logs:ro \
-    -v "$SCRIPT_DIR/fluent-bit.conf":/fluent-bit/etc/fluent-bit.conf:ro \
-    -v "$SCRIPT_DIR/parsers.conf":/fluent-bit/etc/parsers.conf:ro \
-    --restart unless-stopped \
-    fluent/fluent-bit:${FB_VERSION}
-
-  log "Pipeline started successfully"
 }
 
 # -----------------------------
