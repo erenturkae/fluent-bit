@@ -84,9 +84,7 @@ if __name__ == "__main__":
     print(f"\n{'='*55}")
     if r1 and r2:
         print("  [SUCCESS] Both inputs are working!")
-        print("  Open Kibana → Discover → create data views for:")
-        print("    fluent-bit-app    (structured app logs)")
-        print("    fluent-bit-docker (all container logs)")
+
     elif r1:
         print("  [PARTIAL] File tail OK, Docker logs not yet.")
         print("  Check: docker logs fluent-bit")
